@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #717886;
+    color: #f9fafb;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 20px;
+    text-align: center;
+  }
+  h1 { font-size: 1.1rem; color: #9ca3af; font-weight: 500; margin-bottom: 8px; }
+  #time {
+    font-size: 4rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    margin: 16px 0 32px;
+    letter-spacing: 1px;
+  }
+  .buttons { display: flex; gap: 16px; }
+  button {
+    font-size: 1.1rem;
+    font-weight: 600;
+    padding: 16px 32px;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: transform 0.1s ease, opacity 0.2s ease;
+  }
+  button:active { transform: scale(0.96); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  #startBtn { background: #9bffc1; color: #052e11; }
+  #stopBtn { background: #ee6969; color: #2e0505; }
+  #resetBtn { background: #2a313b; color: #f9fafb; }
+  #status { margin-top: 24px; font-size: 0.9rem; color: #6b7280; }
+  .dot {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    background: #6b7280; margin-right: 6px;
+  }
+  .dot.running { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+  #room-box {
+    margin-top: 20px;
+    background: #1f2937;
+    border-radius: 12px;
+    padding: 12px 16px;
+    font-size: 0.85rem;
+    color: #9ca3af;
+    max-width: 340px;
+  }
+  #shareLink {
+    display: block;
+    margin-top: 8px;
+    color: #93c5fd;
+    word-break: break-all;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+  #copyMsg { color: #22c55e; font-size: 0.8rem; height: 16px; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<h1>DELT STOPUR</h1>
+<div id="time">00:00.0</div>
+<div class="buttons">
+  <button id="startBtn">▶ Start</button>
+  <button id="stopBtn">⏸ Stop</button>
+  <button id="resetBtn">↺ Nulstil</button>
+</div>
+<div id="status"><span class="dot" id="statusDot"></span><span id="statusText">Forbinder...</span></div>
+
+<div id="room-box">
+  Alle der åbner dette link deler samme stopur:
+  <span id="shareLink"></span>
+  <div id="copyMsg"></div>
+</div>
+
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<script>
+  // Rum-kode i URL'en, fx ?room=abc123. Genereres tilfældigt hvis den mangler,
+  // så alle der bruger samme link automatisk deler samme stopur.
+  const params = new URLSearchParams(location.search);
+  let room = params.get('room');
+  if (!room) {
+    room = Math.random().toString(36).slice(2, 8);
+    params.set('room', room);
+    history.replaceState(null, '', location.pathname + '?' + params.toString());
+  }
+  const topic = 'delt-stopur-app/' + room + '/state';
+
+  const shareUrl = location.origin + location.pathname + '?room=' + room;
+  const shareLinkEl = document.getElementById('shareLink');
+  shareLinkEl.textContent = shareUrl;
+  shareLinkEl.onclick = () => {
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      document.getElementById('copyMsg').textContent = 'Link kopieret!';
+      setTimeout(() => document.getElementById('copyMsg').textContent = '', 1500);
+    });
+  };
+
+  let state = { running: false, startedAt: 0, accumulated: 0 };
+  let tickInterval = null;
+
+  const timeEl = document.getElementById('time');
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const statusDot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+
+  function formatTime(ms) {
+    const totalMs = Math.max(0, ms);
+    const minutes = Math.floor(totalMs / 60000);
+    const seconds = Math.floor((totalMs % 60000) / 1000);
+    const tenths = Math.floor((totalMs % 1000) / 100);
+    return String(minutes).padStart(2, '0') + ':' +
+           String(seconds).padStart(2, '0') + '.' + tenths;
+  }
+
+  function currentElapsed() {
+    return state.running ? state.accumulated + (Date.now() - state.startedAt) : state.accumulated;
+  }
+
+  function render() {
+    timeEl.textContent = formatTime(currentElapsed());
+    startBtn.disabled = state.running;
+    stopBtn.disabled = !state.running;
+    statusDot.classList.toggle('running', state.running);
+  }
+
+  function startTicking() { if (!tickInterval) tickInterval = setInterval(render, 100); }
+  function stopTicking() { clearInterval(tickInterval); tickInterval = null; }
+
+  function applyState(newState) {
+    state = newState || { running: false, startedAt: 0, accumulated: 0 };
+    render();
+    state.running ? startTicking() : stopTicking();
+  }
+
+  // Offentlig, gratis MQTT-broker — ingen konto eller opsætning nødvendig.
+  const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
+
+  client.on('connect', () => {
+    statusText.textContent = 'Forbundet — live med alle på dette link';
+    client.subscribe(topic);
+  });
+
+  client.on('reconnect', () => { statusText.textContent = 'Genopretter forbindelse...'; });
+  client.on('close', () => { statusText.textContent = 'Ikke forbundet'; });
+  client.on('error', (err) => { statusText.textContent = 'Fejl: ' + err.message; });
+
+  client.on('message', (t, payload) => {
+    if (t !== topic) return;
+    try { applyState(JSON.parse(payload.toString())); } catch (e) {}
+  });
+
+  function publish(newState) {
+    applyState(newState); // opdater lokalt med det samme, ingen ventetid
+    client.publish(topic, JSON.stringify(newState), { qos: 1, retain: true });
+  }
+
+  startBtn.onclick = () => publish({ running: true, startedAt: Date.now(), accumulated: state.accumulated });
+  stopBtn.onclick = () => publish({ running: false, startedAt: 0, accumulated: currentElapsed() });
+  resetBtn.onclick = () => publish({ running: false, startedAt: 0, accumulated: 0 });
+
+  render();
+</script>
+</body>
+</html>
