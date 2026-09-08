@@ -18,7 +18,12 @@
     padding: 20px;
     text-align: center;
   }
-  h1 { font-size: 1.1rem; color: #9ca3af; font-weight: 500; margin-bottom: 8px; }
+  h1 { font-size: 1.1rem; color: #9ca3af; font-weight: 500; margin-bottom: 24px; letter-spacing: 1px; }
+
+  /* Skjuler alle skærme som udgangspunkt — kun den med "active" vises */
+  .screen { display: none; flex-direction: column; align-items: center; }
+  .screen.active { display: flex; }
+
   #time {
     font-size: 4rem;
     font-variant-numeric: tabular-nums;
@@ -26,7 +31,7 @@
     margin: 16px 0 32px;
     letter-spacing: 1px;
   }
-  .buttons { display: flex; gap: 16px; }
+  .buttons { display: flex; flex-direction: column; gap: 16px; align-items: center; }
   button {
     font-size: 1.1rem;
     font-weight: 600;
@@ -35,20 +40,31 @@
     border-radius: 12px;
     cursor: pointer;
     transition: transform 0.1s ease, opacity 0.2s ease;
+    min-width: 160px;
   }
   button:active { transform: scale(0.96); }
   button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  #personBtns { flex-direction: row; }
+  .person-btn { background: hsl(0, 0%, 88%); color: #111827; }
+
   #startBtn { background: hsl(0, 0%, 82%); color: #052e11; }
   #stopBtn { background: hsl(0, 0%, 82%); color: #2e0505; }
   #resetBtn { background: hsl(0, 0%, 20%); color: #f9fafb; }
-  #status { margin-top: 24px; font-size: 0.9rem; color: #6b7280; }
+  #backBtn {
+    background: none; color: #6b7280; font-weight: 500; font-size: 0.85rem;
+    padding: 8px; min-width: 0; margin-top: 20px;
+  }
+
+  #status { margin-bottom: 20px; font-size: 0.85rem; color: #9ca3af; }
   .dot {
     display: inline-block; width: 8px; height: 8px; border-radius: 50%;
     background: #6b7280; margin-right: 6px;
   }
   .dot.running { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+
   #room-box {
-    margin-top: 20px;
+    margin-top: 24px;
     background: #1f2937;
     border-radius: 12px;
     padding: 12px 16px;
@@ -69,25 +85,35 @@
 </head>
 <body>
 
-<h1>DELT STOPUR</h1>
-<div id="time">00:00.0</div>
-<div class="buttons">
-  <button id="startBtn">Start</button>
-  <button id="stopBtn">Stop</button>
-  <button id="resetBtn">Nulstil</button>
+<!-- FORSIDE: vælg hvilken person du er -->
+<div id="screen-home" class="screen active">
+  <h1>DELT STOPUR</h1>
+  <div class="buttons" id="personBtns">
+    <button class="person-btn" id="person1Btn">Person 1</button>
+    <button class="person-btn" id="person2Btn">Person 2</button>
+  </div>
+  <div id="room-box">
+    Del dit stopur live med dette link:
+    <span id="shareLink"></span>
+    <div id="copyMsg"></div>
+  </div>
 </div>
-<div id="status"><span class="dot" id="statusDot"></span><span id="statusText">Forbinder...</span></div>
 
-<div id="room-box">
-  Del dit stopur live med dette link:
-  <span id="shareLink"></span>
-  <div id="copyMsg"></div>
+<!-- UNDERSIDE: viser kun den knap, den valgte person må bruge -->
+<div id="screen-person" class="screen">
+  <div id="status"><span class="dot" id="statusDot"></span><span id="statusText">Forbinder...</span></div>
+  <div id="time">00:00.0</div>
+  <div class="buttons">
+    <button id="startBtn">Start</button>
+    <button id="stopBtn">Stop</button>
+    <button id="resetBtn">Nulstil</button>
+  </div>
+  <button id="backBtn">← Tilbage</button>
 </div>
 
 <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 <script>
-  // Rum-kode i URL'en, fx ?room=abc123. Genereres tilfældigt hvis den mangler,
-  // så alle der bruger samme link automatisk deler samme stopur.
+  // ---------- Rum-kode i URL'en (uændret fra før) ----------
   const params = new URLSearchParams(location.search);
   let room = params.get('room');
   if (!room) {
@@ -107,13 +133,35 @@
     });
   };
 
+  // ---------- Skærm-styring (forside vs. person-underside) ----------
+  const screenHome = document.getElementById('screen-home');
+  const screenPerson = document.getElementById('screen-person');
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const backBtn = document.getElementById('backBtn');
+
+  function showPersonScreen(role) {
+    // role er 1 eller 2. Person 1 må kun starte, Person 2 må kun stoppe.
+    startBtn.style.display = (role === 1) ? 'inline-block' : 'none';
+    stopBtn.style.display = (role === 2) ? 'inline-block' : 'none';
+    screenHome.classList.remove('active');
+    screenPerson.classList.add('active');
+  }
+
+  document.getElementById('person1Btn').onclick = () => showPersonScreen(1);
+  document.getElementById('person2Btn').onclick = () => showPersonScreen(2);
+
+  backBtn.onclick = () => {
+    screenPerson.classList.remove('active');
+    screenHome.classList.add('active');
+  };
+
+  // ---------- Selve stopur-logikken (uændret fra før) ----------
   let state = { running: false, startedAt: 0, accumulated: 0 };
   let tickInterval = null;
 
   const timeEl = document.getElementById('time');
-  const startBtn = document.getElementById('startBtn');
-  const stopBtn = document.getElementById('stopBtn');
-  const resetBtn = document.getElementById('resetBtn');
   const statusDot = document.getElementById('statusDot');
   const statusText = document.getElementById('statusText');
 
@@ -146,14 +194,12 @@
     state.running ? startTicking() : stopTicking();
   }
 
-  // Offentlig, gratis MQTT-broker — ingen konto eller opsætning nødvendig.
   const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
 
   client.on('connect', () => {
     statusText.textContent = 'Forbundet via link';
     client.subscribe(topic);
   });
-
   client.on('reconnect', () => { statusText.textContent = 'Genopretter forbindelse...'; });
   client.on('close', () => { statusText.textContent = 'Ikke forbundet'; });
   client.on('error', (err) => { statusText.textContent = 'Fejl: ' + err.message; });
@@ -164,7 +210,7 @@
   });
 
   function publish(newState) {
-    applyState(newState); // opdater lokalt med det samme, ingen ventetid
+    applyState(newState);
     client.publish(topic, JSON.stringify(newState), { qos: 1, retain: true });
   }
 
