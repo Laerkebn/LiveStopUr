@@ -12,7 +12,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    background: #717886;
+    background: #4b4c4e;
     color: #f9fafb;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     padding: 20px;
@@ -38,9 +38,9 @@
   }
   button:active { transform: scale(0.96); }
   button:disabled { opacity: 0.4; cursor: not-allowed; }
-  #startBtn { background: #9bffc1; color: #052e11; }
-  #stopBtn { background: #ee6969; color: #2e0505; }
-  #resetBtn { background: #2a313b; color: #f9fafb; }
+  #startBtn { background: hsl(0, 0%, 82%); color: #052e11; }
+  #stopBtn { background: hsl(0, 0%, 82%); color: #2e0505; }
+  #resetBtn { background: hsl(0, 0%, 20%); color: #f9fafb; }
   #status { margin-top: 24px; font-size: 0.9rem; color: #6b7280; }
   .dot {
     display: inline-block; width: 8px; height: 8px; border-radius: 50%;
@@ -72,14 +72,14 @@
 <h1>DELT STOPUR</h1>
 <div id="time">00:00.0</div>
 <div class="buttons">
-  <button id="startBtn">▶ Start</button>
-  <button id="stopBtn">⏸ Stop</button>
-  <button id="resetBtn">↺ Nulstil</button>
+  <button id="startBtn">Start</button>
+  <button id="stopBtn">Stop</button>
+  <button id="resetBtn">Nulstil</button>
 </div>
 <div id="status"><span class="dot" id="statusDot"></span><span id="statusText">Forbinder...</span></div>
 
 <div id="room-box">
-  Alle der åbner dette link deler samme stopur:
+  Del dit stopur live med dette link:
   <span id="shareLink"></span>
   <div id="copyMsg"></div>
 </div>
@@ -150,7 +150,7 @@
   const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
 
   client.on('connect', () => {
-    statusText.textContent = 'Forbundet — live med alle på dette link';
+    statusText.textContent = 'Forbundet via link';
     client.subscribe(topic);
   });
 
